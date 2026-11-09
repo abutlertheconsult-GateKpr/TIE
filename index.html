@@ -203,6 +203,10 @@ details[open] > summary { margin-bottom: 12px; }
 .taskrow:last-child { border-bottom: 0; padding-bottom: 0; }
 .tt { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .tt .field { flex: none; min-width: 0; }
+.iv.mv { grid-template-columns: minmax(0, 1fr) auto 44px 44px; }
+.iv.mv .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.iv.mv .tm { font: 500 0.8125rem var(--font-num); color: var(--muted); white-space: nowrap; }
+.iv.mv button { padding: 0; font-size: 1rem; line-height: 1; }
 .tbox { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; min-width: 0; }
 .tbox input { text-align: center; padding: 10px 4px; font-family: var(--font-num); min-width: 0; }
 .tbox input.bad { border-color: var(--bad); color: var(--bad); }
@@ -454,7 +458,7 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
   var pending = null;    // import waiting for merge/replace
   var pasteText = '';
 
-  function go(v) { view = v; armed = null; render(); window.scrollTo(0, 0); }
+  function go(v) { view = v; armed = null; render(); window.scrollTo(0, 0); persistUISoon(); }
   function arm(key, fn) {
     if (armed === key) { armed = null; clearTimeout(armedTimeout); fn(); return; }
     armed = key; clearTimeout(armedTimeout);
@@ -540,7 +544,13 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
     return { text: 'Fully allocated', cls: 'ahead' };
   }
   function editHTML() {
+    var cnt = draft.smode === 'cnt';
     var rows = draft.intervals.map(function (iv, i) {
+      if (draft.reorder) {
+        return '<div class="iv mv"><span class="nm">' + esc(iv.name) + '</span><span class="tm">' + fmtBox(iv.min, iv.u === 'h' ? 'h' : 'm') + (iv.u === 'h' ? ' hr' : ' min') + '</span>' +
+          '<button class="ghost" data-act="mvup" data-i="' + i + '" aria-label="Move ' + esc(iv.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>&uarr;</button>' +
+          '<button class="ghost" data-act="mvdn" data-i="' + i + '" aria-label="Move ' + esc(iv.name) + ' down"' + (i === draft.intervals.length - 1 ? ' disabled' : '') + '>&darr;</button></div>';
+      }
       return '<div class="iv">' +
         '<input type="text" id="ivn-' + i + '" data-f="ivname" data-i="' + i + '" value="' + esc(iv.name) + '" aria-label="Interval ' + (i + 1) + ' name">' +
         timeBox('iv', i, 'ivm-' + i, 'Interval ' + (i + 1) + ' length') +
@@ -548,7 +558,7 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
         '</div>';
     }).join('');
     var list = draft.intervals.length ?
-      '<div class="cols"><span>Name</span><span>Time</span><span></span></div><div class="ivs">' + rows + '</div>' :
+      (draft.reorder ? '' : '<div class="cols"><span>Name</span><span>Time</span><span></span></div>') + '<div class="ivs">' + rows + '</div>' :
       '<div class="muted">No intervals yet. Use Quick split above or add one manually.</div>';
     var st = allocStatus();
     var del = draft.isNew ? '' :
@@ -560,14 +570,19 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
       '<div class="card"><h2>Quick split</h2>' +
         '<div class="row">' +
           '<div class="field"><label for="ttotal">Total time</label>' + timeBox('tot', 0, 'ttotal', 'Total time') + '</div>' +
-          '<div class="field"><label for="tlen">Each interval</label>' + timeBox('len', 0, 'tlen', 'Each interval') + '</div>' +
+          (cnt ?
+            '<div class="field"><label for="tcount">Number of intervals</label><input type="number" id="tcount" data-f="tcount" value="' + (draft.count || 3) + '" min="1" max="200" step="1" inputmode="numeric"></div>' :
+            '<div class="field"><label for="tlen">Each interval</label>' + timeBox('len', 0, 'tlen', 'Each interval') + '</div>') +
         '</div>' +
-        '<div class="muted">Split replaces the intervals below with an even split of the total. You can also add and edit intervals by hand. Every time box starts in minutes: 5 is 5 min and 5:30 is 5 min 30 sec. Tap min to switch it to hr, where 5:30 is 5 hours 30 min.</div>' +
+        '<div class="btns"><button data-act="smode" data-v="len" aria-pressed="' + !cnt + '" class="' + (cnt ? '' : 'sel') + '">By time per interval</button>' +
+        '<button data-act="smode" data-v="cnt" aria-pressed="' + cnt + '" class="' + (cnt ? 'sel' : '') + '">By number of intervals</button></div>' +
+        '<div class="muted">' + (cnt ? 'Splits the total evenly into that many intervals. ' : 'Fills the total with intervals of that length, and the last one takes what is left. ') + 'Split replaces the intervals below, and you can still edit them by hand. Every time box starts in minutes: 5 is 5 min and 5:30 is 5 min 30 sec. Tap min to switch it to hr, where 5:30 is 5 hours 30 min.</div>' +
         '<button data-act="qsplit">Split</button></div>' +
       '<div class="card">' +
         '<div class="t-top"><h2>Intervals</h2><span class="badge ' + st.cls + '" id="alloc">' + st.text + '</span></div>' +
         list +
-        '<button data-act="addiv">Add interval</button>' +
+        (draft.reorder ? '' : '<button data-act="addiv">Add interval</button>') +
+        (draft.intervals.length > 1 ? '<button data-act="reorder" class="' + (draft.reorder ? 'primary' : '') + '">' + (draft.reorder ? 'Done reordering' : 'Reorder intervals') + '</button>' : '') +
       '</div>' +
       '<button class="primary big" data-act="savetimer" id="savetimer">Save timer</button>' + del;
   }
@@ -609,7 +624,7 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
     go({ name: 'run' });
     getWake();
   }
-  function persistRun() { if (run) lsSet(ACTIVE_KEY, JSON.stringify(run)); else lsDel(ACTIVE_KEY); }
+  function persistRun() { if (run) { run.saved = Date.now(); lsSet(ACTIVE_KEY, JSON.stringify(run)); } else lsDel(ACTIVE_KEY); }
   function accumulate() {
     if (run && run.running) { var now = Date.now(); run.ivAcc += Math.max(0, now - run.last); run.last = now; }
   }
@@ -1112,7 +1127,7 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
     });
     return ph;
   }
-  function persistPrun() { if (prun) lsSet(POMO_KEY, JSON.stringify(prun)); else lsDel(POMO_KEY); }
+  function persistPrun() { if (prun) { prun.saved = Date.now(); lsSet(POMO_KEY, JSON.stringify(prun)); } else lsDel(POMO_KEY); }
   function tabsHTML() {
     return '<div class="tabs" role="tablist">' +
       '<button role="tab" data-act="tab" data-v="timers" aria-selected="' + (homeTab !== 'pomo') + '">Timers</button>' +
@@ -1289,6 +1304,7 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
     }
     if (!f || !draft) return;
     if (f === 'tname') draft.name = t.value;
+    else if (f === 'tcount') draft.count = t.value === '' ? 0 : num(t.value, 0);
     else if (f === 'ivname') draft.intervals[+t.dataset.i].name = t.value;
   });
   root.addEventListener('change', function (e) {
@@ -1371,6 +1387,25 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
       render();
     }
     else if (act === 'rmiv') { draft.intervals.splice(i, 1); render(); }
+    else if (act === 'smode') { draft.smode = b.dataset.v === 'cnt' ? 'cnt' : 'len'; render(); }
+    else if (act === 'reorder') { draft.reorder = !draft.reorder; render(); }
+    else if (act === 'mvup' || act === 'mvdn') {
+      var j = act === 'mvup' ? i - 1 : i + 1;
+      if (j >= 0 && j < draft.intervals.length) { var tmpi = draft.intervals[i]; draft.intervals[i] = draft.intervals[j]; draft.intervals[j] = tmpi; }
+      render();
+    }
+    else if (act === 'qsplit' && draft.smode === 'cnt') {
+      var totalC = num(draft.total, 0), nC = Math.round(num(draft.count === undefined ? 3 : draft.count, 0)), secsC = Math.round(totalC * 60);
+      if (!(secsC > 0 && nC >= 1)) { msg = { text: 'Enter a total time and a number of intervals.', err: true }; render(); }
+      else if (nC > 200) { msg = { text: 'That is more than 200 intervals. Use fewer.', err: true }; render(); }
+      else if (secsC < nC) { msg = { text: 'That total is too short for that many intervals.', err: true }; render(); }
+      else {
+        msg = null;
+        var baseC = Math.floor(secsC / nC), remC = secsC - baseC * nC, arrC = [];
+        for (var q = 0; q < nC; q++) arrC.push({ id: uid(), name: 'Interval ' + (q + 1), min: (baseC + (q < remC ? 1 : 0)) / 60, u: 'm' });
+        draft.intervals = arrC; draft.reorder = false; render();
+      }
+    }
     else if (act === 'qsplit') {
       var total = num(draft.total, 0), len = num(draft.len, 0);
       if (!(total > 0 && len > 0)) { msg = { text: 'Enter a total time and an interval length greater than 0.', err: true }; render(); }
@@ -1457,13 +1492,42 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
     });
   });
 
+  /* ---------- Resume: keep where the person left off ---------- */
+  var UI_KEY = 'tie.ui.v1';
+  function settleOnOpen(r, accKey) {
+    /* Closed for under 2 minutes: keep running as if nothing happened. Longer: stop the clock where it was last saved and wait on Resume. */
+    var now = Date.now(), saved = r.saved || r.last;
+    if (r.running && now - saved > 120000) {
+      r[accKey] += Math.max(0, saved - r.last);
+      r.running = false; r.last = now;
+    }
+    return r;
+  }
+  function persistUI() {
+    try {
+      if (run || prun) { lsDel(UI_KEY); return; }
+      var v = view.name;
+      if (['home', 'edit', 'pedit', 'stats', 'data', 'summary'].indexOf(v) < 0) return;
+      lsSet(UI_KEY, JSON.stringify({ view: view, homeTab: homeTab, draft: v === 'edit' ? draft : null, sdraft: v === 'pedit' ? sdraft : null }));
+    } catch (e) {}
+  }
+  var uiTimer = null;
+  function persistUISoon() { clearTimeout(uiTimer); uiTimer = setTimeout(persistUI, 250); }
+  function heartbeat() { if (run && run.running) persistRun(); if (prun && prun.running) persistPrun(); persistUI(); }
+  setInterval(heartbeat, 5000);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') heartbeat(); });
+  window.addEventListener('pagehide', heartbeat);
+  root.addEventListener('input', persistUISoon);
+  root.addEventListener('change', persistUISoon);
+  root.addEventListener('click', persistUISoon);
+
   /* ---------- Boot: resume an unfinished run if one was saved ---------- */
   try {
     var saved = lsGet(ACTIVE_KEY);
     if (saved) {
       var r = JSON.parse(saved);
       if (r && Array.isArray(r.durs) && r.durs.length && r.idx < r.durs.length && getTimer(r.timerId)) {
-        run = r; view = { name: 'run' };
+        run = settleOnOpen(r, 'ivAcc'); view = { name: 'run' };
       } else lsDel(ACTIVE_KEY);
     }
   } catch (e) { lsDel(ACTIVE_KEY); }
@@ -1472,11 +1536,24 @@ input[type="file"] { width: 100%; font: 400 0.875rem var(--font-ui); color: var(
     if (psaved && !run) {
       var pr = JSON.parse(psaved);
       if (pr && Array.isArray(pr.ph) && pr.ph.length && pr.idx < pr.ph.length) {
-        if (Date.now() - pr.last > 120000) { pr.running = false; pr.last = Date.now(); }
-        prun = pr; view = { name: 'prun' };
+        prun = settleOnOpen(pr, 'acc'); view = { name: 'prun' };
       } else lsDel(POMO_KEY);
     }
   } catch (e) { lsDel(POMO_KEY); }
+  if (!run && !prun) {
+    try {
+      var us = JSON.parse(lsGet(UI_KEY) || 'null');
+      if (us && us.view && typeof us.view.name === 'string') {
+        var vn = us.view.name;
+        if (us.homeTab === 'pomo') homeTab = 'pomo';
+        if (vn === 'edit' && us.draft && Array.isArray(us.draft.intervals)) { draft = us.draft; view = { name: 'edit' }; }
+        else if (vn === 'pedit' && us.sdraft && Array.isArray(us.sdraft.tasks) && Array.isArray(us.sdraft.playlist)) { sdraft = us.sdraft; view = { name: 'pedit' }; }
+        else if (vn === 'stats' && getTimer(us.view.id)) view = { name: 'stats', id: us.view.id };
+        else if (vn === 'summary' && db.runs.some(function (x) { return x.id === us.view.id; })) view = { name: 'summary', id: us.view.id };
+        else if (vn === 'data') view = { name: 'data' };
+      }
+    } catch (e) {}
+  }
   idbOpen(function () {
     idbLoad(function () {
       if (prun) { prepList(getSession(prun.sid)); }
